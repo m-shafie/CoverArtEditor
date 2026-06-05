@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cover Art Editor — Standalone</title>
+  
+  <!-- Local (offline) library for tag parsing -->
+  <script src="libs/jsmediatags.min.js"></script>
+  <!-- Local (offline) library for ID3 writing -->
+  <script src="libs/browser-id3-writer.min.js"></script>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#3b82f6;--muted:#9ca3af;--glass:rgba(255,255,255,0.03)}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;color:#e6eef8;background:linear-gradient(180deg,#071029 0%, #071a2b 100%);}
+         .container{max-width:1200px;margin:28px auto;padding:24px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+    h1{margin:0 0 8px;font-size:20px}
+    p.lead{margin:0 0 18px;color:var(--muted)}
+    .top{display:flex;gap:16px;align-items:flex-start}
+         .card{background:var(--card);padding:18px;border-radius:10px;flex:1;min-width:0}
+    .left-panel{flex:1;min-width:0}
+    .right-panel{flex:0 0 420px;position:sticky;top:20px}
+    #drop-area{border:2px dashed rgba(255,255,255,0.04);padding:18px;text-align:center;border-radius:8px;cursor:pointer}
+    #drop-area.dragover{background:rgba(59,130,246,0.06);border-color:rgba(59,130,246,0.5)}
+    input[type=file]{display:none}
+    .meta{display:flex;gap:12px;align-items:center}
+    .thumb{width:140px;height:140px;border-radius:8px;overflow:hidden;background:var(--glass);display:flex;align-items:center;justify-content:center}
+    .thumb img{max-width:100%;max-height:100%;display:block}
+    .fields{flex:1}
+         .field{margin-bottom:12px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+         .value{background:#071429;padding:10px;border-radius:6px;color:#cfe6ff;min-height:20px;display:flex;align-items:center}
+         .search{display:flex;gap:8px;margin-top:16px}
+    .search input{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+    button{background:var(--accent);border:none;color:white;padding:8px 12px;border-radius:8px;cursor:pointer}
+    .results{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:12px}
+    .result{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;cursor:pointer;text-align:center;border:1px solid transparent;transition:border-color .15s ease}
+    .result img{width:100%;aspect-ratio:1/1;height:auto;object-fit:contain;border-radius:6px}
+    .result.selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,0.25) inset}
+              .compare{display:flex;gap:16px;margin-top:18px;flex-direction:row}
+     .compare .panel{flex:1;min-width:180px;background:#071429;padding:12px;border-radius:8px}
+    .info{font-size:12px;color:var(--muted);margin-top:6px}
+         .actions{display:flex;gap:8px;margin-top:16px}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+    .artbox{width:100%;aspect-ratio:1/1;background:var(--glass);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .artbox img{width:100%;height:100%;object-fit:contain;border-radius:6px}
+         .value.clickable{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+     .edit-field{background:#071429;padding:10px;border-radius:6px;color:#cfe6ff;border:1px solid var(--accent);outline:none;width:100%;box-sizing:border-box;min-height:20px}
+     .edit-field:focus{border-color:#60a5fa;box-shadow:0 0 0 2px rgba(59,130,246,0.25)}
+    @media(max-width:720px){
+      .top{flex-direction:column}
+      .meta{flex-direction:column;align-items:flex-start}
+      .thumb{width:100%;height:220px}
+      .right-panel{position:static;flex:none;width:100%}
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Cover Art Editor — Standalone (Client-side)</h1>
+    <p class="lead">Load a music file, search for cover art, preview side-by-side, and replace the cover. MP3 full support; other formats may be limited by browser APIs.</p>
+
+    <div class="top">
+      <div class="card left-panel">
+        <div id="drop-area">
+          <strong>Drop audio file here</strong>
+          <div style="margin-top:8px;color:var(--muted)">or <label for="file-input" style="color:var(--accent);cursor:pointer">choose a file</label></div>
+          <input id="file-input" type="file" accept="audio/*" />
+          <div style="margin-top:8px">
+            <button id="open-write-btn" style="display:none">Open with write access (Chrome/Edge)</button>
+          </div>
+        </div>
+
+        <div class="meta" style="margin-top:12px">
+          <div class="thumb artbox" id="current-thumb" style="width:40%;height:40%"><span style="color:var(--muted);font-size:13px">No cover</span></div>
+          <div class="fields">
+            <div class="field"><label>File</label><div id="file-name" class="value">—</div></div>
+                         <div class="field" style="display:flex;gap:8px">
+               <div style="flex:1">
+                 <label>Title</label>
+                 <input id="meta-title-edit" type="text" class="value edit-field" placeholder="Enter title..." style="display:none">
+                 <div id="meta-title" class="value clickable">—</div>
+               </div>
+               <div style="flex:1">
+                 <label>Artist</label>
+                 <input id="meta-artist-edit" type="text" class="value edit-field" placeholder="Enter artist..." style="display:none">
+                 <div id="meta-artist" class="value clickable">—</div>
+               </div>
+             </div>
+             <div class="field">
+               <label>Filename</label>
+               <input id="filename-edit" type="text" class="value edit-field" placeholder="Enter filename..." style="display:none">
+               <div id="filename-display" class="value clickable">—</div>
+             </div>
+            <div class="search">
+              <input id="search-input" placeholder="Search by artist or title (or use metadata)" />
+              <button id="search-btn">Search</button>
+            </div>
+          </div>
+        </div>
+
+                 <div id="results" class="results"></div>
+         <div id="show-more-container" style="text-align:center;margin-top:16px;display:none">
+           <button id="show-more-btn" style="background:var(--accent);border:none;color:white;padding:10px 20px;border-radius:8px;cursor:pointer">Show More Results</button>
+         </div>
+      </div>
+
+      <div class="card right-panel">
+        <h3 style="margin-top:0">Preview & Replace</h3>
+        <div class="compare">
+          <div class="panel">
+            <strong>Current</strong>
+            <div style="margin-top:8px" id="cur-preview" class="artbox"><div style="color:var(--muted)">No image</div></div>
+            <div class="info" id="cur-info"></div>
+          </div>
+          <div class="panel">
+            <strong>Selected</strong>
+            <div style="margin-top:8px" id="sel-preview" class="artbox"><div style="color:var(--muted)">No image</div></div>
+            <div class="info" id="sel-info"></div>
+          </div>
+        </div>
+
+                 <div class="actions">
+           <button id="apply-btn" disabled>Apply Changes</button>
+           <input id="manual-image" type="file" accept="image/*" style="display:none" />
+           <button id="import-btn">Import Image</button>
+         </div>
+
+                 <div style="margin-top:10px;color:var(--muted);font-size:13px">Note: MP3 (ID3) metadata editing and cover replacement are fully supported. Use "Apply Changes" to save both metadata and cover changes. M4A metadata reading is supported, but editing requires external tools. FLAC editing in-browser is limited.</div>
+      </div>
+    </div>
+
+    <footer>Built with browser-native APIs and minimal ID3 handling. iTunes Search API used for cover suggestions.</footer>
+  </div>
+
+  <script>
+    // Elements
+    const fileInput = document.getElementById('file-input');
+    const dropArea = document.getElementById('drop-area');
+    const fileNameEl = document.getElementById('file-name');
+    const metaTitleEl = document.getElementById('meta-title');
+    const metaArtistEl = document.getElementById('meta-artist');
+    const currentThumb = document.getElementById('current-thumb');
+    const resultsEl = document.getElementById('results');
+    const searchInput = document.getElementById('search-input');
+    const searchBtn = document.getElementById('search-btn');
+    const curPreview = document.getElementById('cur-preview');
+    const selPreview = document.getElementById('sel-preview');
+    const curInfo = document.getElementById('cur-info');
+    const selInfo = document.getElementById('sel-info');
+         const applyBtn = document.getElementById('apply-btn');
+     const importBtn = document.getElementById('import-btn');
+     const manualImage = document.getElementById('manual-image');
+     const openWriteBtn = document.getElementById('open-write-btn');
+     const showMoreBtn = document.getElementById('show-more-btn');
+     const showMoreContainer = document.getElementById('show-more-container');
+     const metaTitleEdit = document.getElementById('meta-title-edit');
+     const metaArtistEdit = document.getElementById('meta-artist-edit');
+     const filenameEdit = document.getElementById('filename-edit');
+     const filenameDisplay = document.getElementById('filename-display');
+
+         let currentFile = null;
+     let currentFileHandle = null; // File System Access API handle, if user opened with write access
+     let currentCoverBlob = null;
+     let selectedImageBlob = null;
+     let currentMetadata = {};
+     let currentSearchResults = [];
+     let currentSearchOffset = 0;
+     let hasMoreResults = false;
+
+    // Enhanced ID3 parser for MP3 files (handles v2.2, v2.3, v2.4, PIC/APIC, unsynchronization, multiple pictures)
+    function parseID3v2(data) {
+      const view = new DataView(data);
+      if (view.byteLength < 10) return null;
+      const header = String.fromCharCode(...new Uint8Array(data, 0, 3));
+      if (header !== 'ID3') return null;
+      const version = view.getUint8(3);
+      const flags = view.getUint8(4);
+      const tagSize = (view.getUint8(5) << 21) | (view.getUint8(6) << 14) | (view.getUint8(7) << 7) | view.getUint8(8);
+
+      // Slice tag data into a separate buffer
+      let tagBytes = new Uint8Array(data, 10, Math.min(tagSize, view.byteLength - 10));
+
+      // Remove unsynchronization if set at tag-level (common in v2.3)
+      if (flags & 0x80) {
+        const out = [];
+        for (let i = 0; i < tagBytes.length; i++) {
+          const b = tagBytes[i];
+          out.push(b);
+          if (b === 0xFF && i + 1 < tagBytes.length && tagBytes[i + 1] === 0x00) {
+            // drop inserted 0x00
+            i++;
+          }
+        }
+        tagBytes = new Uint8Array(out);
+      }
+
+      const tagView = new DataView(tagBytes.buffer, tagBytes.byteOffset, tagBytes.byteLength);
+      let offset = 0;
+      const metadata = {};
+      const pictures = [];
+
+      // Extended header inside tag data
+      if (flags & 0x40) {
+        if (version === 4 && offset + 4 <= tagView.byteLength) {
+          const extSize = ((tagBytes[offset] & 0x7F) << 21) | ((tagBytes[offset + 1] & 0x7F) << 14) | ((tagBytes[offset + 2] & 0x7F) << 7) | (tagBytes[offset + 3] & 0x7F);
+          offset += 4 + extSize;
+        } else if (offset + 4 <= tagView.byteLength) {
+          const extSize = tagView.getUint32(offset, false);
+          offset += 4 + extSize;
+        }
+      }
+
+      const isAsciiUpperNum = (code) => (code >= 0x30 && code <= 0x39) || (code >= 0x41 && code <= 0x5A);
+      const decodeText = (u8) => {
+        if (!u8 || u8.length === 0) return '';
+        const enc = u8[0];
+        const bytes = u8.slice(1);
+        try {
+          if (enc === 0) return new TextDecoder('iso-8859-1').decode(bytes).replace(/\0/g, '').trim();
+          if (enc === 1) return new TextDecoder('utf-16').decode(bytes).replace(/\0/g, '').trim();
+          if (enc === 2) return new TextDecoder('utf-16be').decode(bytes).replace(/\0/g, '').trim();
+          if (enc === 3) return new TextDecoder('utf-8').decode(bytes).replace(/\0/g, '').trim();
+        } catch (e) { console.error('Text decode error:', e); }
+        return new TextDecoder().decode(bytes).replace(/\0/g, '').trim();
+      };
+      const findTerminator = (bytes, start, enc) => {
+        if (enc === 1 || enc === 2) {
+          for (let i = start; i + 1 < bytes.length; i += 1) {
+            if (bytes[i] === 0x00 && bytes[i + 1] === 0x00) return i;
+          }
+          return -1;
+        } else {
+          for (let i = start; i < bytes.length; i++) {
+            if (bytes[i] === 0x00) return i;
+          }
+          return -1;
+        }
+      };
+      const readSynchsafe32 = (at) => ((tagBytes[at] & 0x7F) << 21) | ((tagBytes[at + 1] & 0x7F) << 14) | ((tagBytes[at + 2] & 0x7F) << 7) | (tagBytes[at + 3] & 0x7F);
+
+      while (offset + 6 <= tagView.byteLength) {
+        let frameID = '';
+        let frameSize = 0;
+        let frameFlags = 0;
+        let headerLen = 0;
+
+        if (version === 2) {
+          if (offset + 6 > tagView.byteLength) break;
+          frameID = String.fromCharCode(tagBytes[offset], tagBytes[offset + 1], tagBytes[offset + 2]);
+          frameSize = (tagBytes[offset + 3] << 16) | (tagBytes[offset + 4] << 8) | tagBytes[offset + 5];
+          headerLen = 6;
+        } else {
+          if (offset + 10 > tagView.byteLength) break;
+          frameID = String.fromCharCode(tagBytes[offset], tagBytes[offset + 1], tagBytes[offset + 2], tagBytes[offset + 3]);
+          frameSize = (version === 4) ? readSynchsafe32(offset + 4) : tagView.getUint32(offset + 4, false);
+          frameFlags = tagView.getUint16(offset + 8, false);
+          headerLen = 10;
+        }
+
+        if (!frameID || frameID.indexOf('\u0000') !== -1) break;
+        const idBytes = new Uint8Array([...frameID].map(c => c.charCodeAt(0)));
+        if ([...idBytes].some(c => !isAsciiUpperNum(c))) break;
+
+        if (frameSize === 0) { offset += headerLen; continue; }
+        if (frameSize > tagView.byteLength - offset - headerLen) break;
+
+        const frameData = tagBytes.slice(offset + headerLen, offset + headerLen + frameSize);
+
+        if (frameID === 'TIT2' || frameID === 'TIT1' || frameID === 'TT2') {
+          const text = decodeText(frameData);
+          if (text) metadata.title = text;
+        } else if (frameID === 'TPE1' || frameID === 'TPE2' || frameID === 'TP1' || frameID === 'TP2') {
+          const text = decodeText(frameData);
+          if (text) metadata.artist = text;
+        } else if (frameID === 'APIC' || frameID === 'PIC') {
+          if (version === 2) {
+            if (frameData.length > 6) {
+              const enc = frameData[0];
+              const fmt = String.fromCharCode(frameData[1], frameData[2], frameData[3]).toLowerCase();
+              const picType = frameData[4];
+              let idx = 5;
+              const term = (enc === 1 || enc === 2) ? [0x00, 0x00] : [0x00];
+              if (term.length === 2) {
+                while (idx + 1 < frameData.length && !(frameData[idx] === 0x00 && frameData[idx + 1] === 0x00)) idx++;
+                idx += 2;
+              } else {
+                while (idx < frameData.length && frameData[idx] !== 0x00) idx++;
+                idx += 1;
+              }
+              const pic = frameData.slice(idx);
+              const mime = (fmt === 'jpg') ? 'image/jpeg' : (fmt === 'png') ? 'image/png' : 'image/' + fmt;
+              if (pic.length > 0) pictures.push({ type: picType, data: pic, format: mime });
+            }
+          } else {
+            if (frameData.length > 2) {
+              const enc = frameData[0];
+              const mimeEnd = frameData.indexOf(0x00, 1);
+              if (mimeEnd > 0 && mimeEnd < frameData.length - 2) {
+                const mime = new TextDecoder('iso-8859-1').decode(frameData.slice(1, mimeEnd));
+                const picType = frameData[mimeEnd + 1];
+                const descStart = mimeEnd + 2;
+                const descEnd = findTerminator(frameData, descStart, enc);
+                const dataStart = descEnd >= 0 ? descEnd + ((enc === 1 || enc === 2) ? 2 : 1) : descStart;
+                const pic = frameData.slice(dataStart);
+                if (pic.length > 0) pictures.push({ type: picType, data: pic, format: mime });
+              }
+            }
+          }
+        }
+
+        offset += headerLen + frameSize;
+      }
+
+      // Choose best picture: prefer type 3 (front cover), otherwise first
+      if (pictures.length > 0) {
+        const front = pictures.find(p => p.type === 3) || pictures[0];
+        metadata.picture = { data: front.data, format: front.format };
+      }
+
+      return metadata;
+    }
+
+    // Alternative: Try to find ID3v1 at the end of file
+    function parseID3v1(data) {
+      const view = new DataView(data);
+      if (view.byteLength < 128) return null;
+      
+      const offset = view.byteLength - 128;
+      const tag = String.fromCharCode(...new Uint8Array(data, offset, 3));
+      if (tag !== 'TAG') return null;
+      
+      
+      const title = String.fromCharCode(...new Uint8Array(data, offset + 3, 30)).replace(/\0/g, '').trim();
+      const artist = String.fromCharCode(...new Uint8Array(data, offset + 33, 30)).replace(/\0/g, '').trim();
+      
+      return { title, artist };
+    }
+
+    // Try to use external library for better parsing
+    async function parseWithExternalLibrary(blob) {
+      try {
+        // Prefer local jsmediatags if present (works offline)
+        if (window.jsmediatags) {
+          const res = await new Promise((resolve) => {
+            window.jsmediatags.read(blob, {
+              onSuccess: (tag) => resolve({ ok: true, tag }),
+              onError: (error) => resolve({ ok: false, error })
+            });
+          });
+          if (res && res.ok && res.tag) {
+            const t = res.tag;
+            const result = {};
+            if (t.tags) {
+              if (t.tags.title) result.title = t.tags.title;
+              if (t.tags.artist) result.artist = t.tags.artist;
+              if (t.tags.picture && t.tags.picture.data && t.tags.picture.format) {
+                const pic = t.tags.picture;
+                // jsmediatags returns Uint8Array-like; ensure a real Uint8Array
+                const u8 = new Uint8Array(pic.data);
+                result.picture = { data: u8, format: pic.format };
+              }
+            }
+            return result;
+          } else {
+          }
+        }
+        
+        // Fallback: try any global music-metadata-browser if available (online only)
+        const musicMetadata = window.MusicMetadataBrowser || window.musicMetadata || window.MusicMetadata;
+        if (musicMetadata && musicMetadata.parseBlob) {
+          const metadata = await musicMetadata.parseBlob(blob);
+          const result = {};
+          if (metadata.common && metadata.common.title) result.title = metadata.common.title;
+          if (metadata.common && metadata.common.artist) result.artist = metadata.common.artist;
+          if (metadata.common && metadata.common.picture && metadata.common.picture.length > 0) {
+            const picture = metadata.common.picture[0];
+            result.picture = { data: picture.data, format: picture.format };
+          }
+          return result;
+        }
+      } catch (err) {
+      }
+      return null;
+    }
+
+    // Drag & drop
+    ;['dragenter','dragover'].forEach(ev=>{
+      dropArea.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();dropArea.classList.add('dragover')});
+    });
+    ;['dragleave','drop'].forEach(ev=>{
+      dropArea.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();dropArea.classList.remove('dragover')});
+    });
+    dropArea.addEventListener('drop', e=>{
+      const f = e.dataTransfer.files[0]; if(f) handleFile(f);
+    });
+    dropArea.addEventListener('click', ()=>fileInput.click());
+    fileInput.addEventListener('change', e=>{if(e.target.files[0]) handleFile(e.target.files[0]);});
+
+    // Manual image import
+    importBtn.addEventListener('click', ()=>manualImage.click());
+    manualImage.addEventListener('change', e=>{if(e.target.files[0]) selectImageFile(e.target.files[0]);});
+
+    // Enable write-access button if supported
+    if (window.showOpenFilePicker && window.showSaveFilePicker) {
+      openWriteBtn.style.display = '';
+      openWriteBtn.addEventListener('click', async ()=>{
+        try{
+          const [handle] = await window.showOpenFilePicker({
+            types: [{ description: 'Audio Files', accept: { 'audio/*': ['.mp3','.m4a','.flac','.wav'] } }]
+          });
+          currentFileHandle = handle;
+          const file = await handle.getFile();
+          currentFile = file;
+          fileInput.value = '';
+          handleFile(file);
+        }catch(err){ console.log('Open with write access canceled or failed:', err); }
+      });
+    }
+
+    async function handleFile(file){
+      currentFile = file;
+      fileNameEl.textContent = file.name + ' (' + Math.round(file.size/1024) + ' KB)';
+      
+      // Show loading state
+      metaTitleEl.textContent = 'Loading...';
+      metaArtistEl.textContent = 'Loading...';
+      currentThumb.innerHTML = '<span style="color:var(--muted);font-size:13px">Loading...</span>';
+      
+      try{
+        
+        // Try to parse metadata based on file type
+        if (file.name.toLowerCase().endsWith('.mp3') || file.type === 'audio/mpeg') {
+          // Parse MP3 ID3 tags
+          const arrayBuffer = await file.arrayBuffer();
+          
+          // Try ID3v2 first
+          let metadata = parseID3v2(arrayBuffer);
+          
+          // If no ID3v2, try ID3v1
+          if (!metadata || (!metadata.title && !metadata.artist)) {
+            const id3v1 = parseID3v1(arrayBuffer);
+            if (id3v1) {
+              metadata = { ...metadata, ...id3v1 };
+            }
+          }
+          
+          // If still no metadata, try external library
+          if (!metadata || (!metadata.title && !metadata.artist && !metadata.picture)) {
+            const externalMetadata = await parseWithExternalLibrary(file);
+            if (externalMetadata) {
+              metadata = { ...metadata, ...externalMetadata };
+            }
+          }
+          
+          // If we have title/artist but no picture, try external library to supplement cover only
+          if (metadata && !metadata.picture) {
+            const extra = await parseWithExternalLibrary(file);
+            if (extra && extra.picture) {
+              metadata.picture = extra.picture;
+            }
+          }
+          
+                 if (metadata && (metadata.title || metadata.artist || metadata.picture)) {
+         currentMetadata = metadata;
+         metaTitleEl.textContent = metadata.title || '—';
+         metaArtistEl.textContent = metadata.artist || '—';
+         filenameDisplay.textContent = file.name.replace(/\.[^/.]+$/, "") || '—';
+            
+            
+            if (metadata.picture) {
+              const blob = new Blob([metadata.picture.data], {type: metadata.picture.format || 'image/jpeg'});
+              currentCoverBlob = blob;
+              showCurrentCover(blob);
+            } else {
+              currentCoverBlob = null;
+              showCurrentCover(null);
+            }
+                     } else {
+             // Fallback: try to extract filename as title
+             const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+             currentMetadata = { title: nameWithoutExt, artist: 'Unknown Artist' };
+             metaTitleEl.textContent = nameWithoutExt;
+             metaArtistEl.textContent = 'Unknown Artist';
+             filenameDisplay.textContent = nameWithoutExt;
+             currentCoverBlob = null;
+             showCurrentCover(null);
+           }
+                 } else {
+           // For other formats, just use filename
+           const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+           currentMetadata = { title: nameWithoutExt, artist: 'Unknown Artist' };
+           metaTitleEl.textContent = nameWithoutExt;
+           metaArtistEl.textContent = 'Unknown Artist';
+           filenameDisplay.textContent = nameWithoutExt;
+           currentCoverBlob = null;
+           showCurrentCover(null);
+         }
+        
+         
+         // Enable apply button
+         applyBtn.disabled = false;
+         
+       }catch(err){
+        console.error('Metadata parsing error:', err);
+        
+        // Reset UI on error
+        metaTitleEl.textContent = '—';
+        metaArtistEl.textContent = '—';
+        currentThumb.innerHTML = '<span style="color:var(--muted);font-size:13px">Error</span>';
+        currentCoverBlob = null;
+        showCurrentCover(null);
+        
+        alert('Failed to read metadata: ' + err.message + '\n\nPlease make sure the file is a valid audio file.');
+      }
+    }
+
+    function showCurrentCover(blob){
+      curPreview.innerHTML = '';
+      currentThumb.innerHTML = '';
+      if(!blob){
+        curPreview.innerHTML = '<div style="height:160px;display:flex;align-items:center;justify-content:center;color:var(--muted)">No image</div>';
+        currentThumb.innerHTML = '<span style="color:var(--muted);font-size:13px">No cover</span>';
+        curInfo.textContent = '—';
+        return;
+      }
+      
+      const mainUrl = URL.createObjectURL(blob);
+      const thumbUrl = URL.createObjectURL(blob);
+      const urlForMeasure = URL.createObjectURL(blob);
+      const img = document.createElement('img'); 
+      img.src = mainUrl; 
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'contain';
+      img.style.borderRadius = '6px';
+      img.onload = ()=>{
+        URL.revokeObjectURL(mainUrl);
+      };
+      img.onerror = (err)=>{
+        console.error('Failed to load image:', err);
+        curPreview.innerHTML = '<div style="height:160px;display:flex;align-items:center;justify-content:center;color:var(--muted)">Failed to load image</div>';
+      };
+      curPreview.appendChild(img);
+      
+      const thumbImg = document.createElement('img');
+      thumbImg.src = thumbUrl;
+      thumbImg.style.width = '100%';
+      thumbImg.style.height = '100%';
+      thumbImg.style.objectFit = 'contain';
+      thumbImg.onload = ()=>{ URL.revokeObjectURL(thumbUrl); };
+      currentThumb.appendChild(thumbImg);
+      
+      // size + dimensions using a separate URL object to avoid revoke timing
+      const oImg = new Image(); oImg.src = urlForMeasure; oImg.onload = ()=>{curInfo.textContent = `${oImg.width}×${oImg.height} — ${Math.round(blob.size/1024)} KB`; URL.revokeObjectURL(urlForMeasure); };
+    }
+
+         // Search
+     searchBtn.addEventListener('click', ()=>doSearch());
+     searchInput.addEventListener('keydown', e=>{if(e.key==='Enter') doSearch();});
+     // Click title/artist to search using that value (replacing existing)
+     metaTitleEl.addEventListener('click', ()=>{ if (metaTitleEl.textContent && metaTitleEl.textContent !== '—') { searchInput.value = metaTitleEl.textContent.trim(); doSearch(); } });
+     metaArtistEl.addEventListener('click', ()=>{ if (metaArtistEl.textContent && metaArtistEl.textContent !== '—') { searchInput.value = metaArtistEl.textContent.trim(); doSearch(); } });
+     
+     // Show more results
+     showMoreBtn.addEventListener('click', ()=>loadMoreResults());
+     
+     // Double-click to edit metadata fields
+     metaTitleEl.addEventListener('dblclick', ()=>{ toggleEditField('title'); });
+     metaArtistEl.addEventListener('dblclick', ()=>{ toggleEditField('artist'); });
+     filenameDisplay.addEventListener('dblclick', ()=>{ toggleEditField('filename'); });
+     
+     // Handle edit field changes
+     metaTitleEdit.addEventListener('blur', ()=>{ saveEditField('title'); });
+     metaArtistEdit.addEventListener('blur', ()=>{ saveEditField('artist'); });
+     filenameEdit.addEventListener('blur', ()=>{ saveEditField('filename'); });
+     metaTitleEdit.addEventListener('keydown', (e)=>{ if(e.key==='Enter') saveEditField('title'); });
+     metaArtistEdit.addEventListener('keydown', (e)=>{ if(e.key==='Enter') saveEditField('artist'); });
+     filenameEdit.addEventListener('keydown', (e)=>{ if(e.key==='Enter') saveEditField('filename'); });
+
+         async function doSearch(){
+       const q = (searchInput.value || (currentMetadata.artist? currentMetadata.artist + ' ' + (currentMetadata.title||'') : '')).trim();
+       if(!q) return alert('Please enter a search term or load a file with metadata.');
+       
+       // Reset search state
+       currentSearchOffset = 0;
+       currentSearchResults = [];
+       hasMoreResults = false;
+       
+       resultsEl.innerHTML = 'Searching...';
+       showMoreContainer.style.display = 'none';
+       
+       try{
+         const url = 'https://itunes.apple.com/search?term=' + encodeURIComponent(q) + '&media=music&entity=album&limit=24';
+         const res = await fetch(url);
+         const json = await res.json();
+         
+         currentSearchResults = json.results || [];
+         hasMoreResults = currentSearchResults.length === 24;
+         
+         renderResults(currentSearchResults);
+         
+         if (hasMoreResults) {
+           showMoreContainer.style.display = 'block';
+         }
+       }catch(err){console.error(err);resultsEl.innerHTML = 'Search failed.'}
+     }
+     
+     async function loadMoreResults(){
+       if (!hasMoreResults) return;
+       
+       const q = (searchInput.value || (currentMetadata.artist? currentMetadata.artist + ' ' + (currentMetadata.title||'') : '')).trim();
+       if(!q) return;
+       
+       currentSearchOffset += 24;
+       showMoreBtn.textContent = 'Loading...';
+       showMoreBtn.disabled = true;
+       
+       try{
+         const url = 'https://itunes.apple.com/search?term=' + encodeURIComponent(q) + '&media=music&entity=album&limit=24&offset=' + currentSearchOffset;
+         const res = await fetch(url);
+         const json = await res.json();
+         
+         const newResults = json.results || [];
+         currentSearchResults = currentSearchResults.concat(newResults);
+         
+         // Check if there are more results
+         hasMoreResults = newResults.length === 24;
+         
+         renderResults(currentSearchResults);
+         
+         if (!hasMoreResults) {
+           showMoreContainer.style.display = 'none';
+         }
+         
+         showMoreBtn.textContent = 'Show More Results';
+         showMoreBtn.disabled = false;
+       }catch(err){
+         console.error(err);
+         showMoreBtn.textContent = 'Show More Results';
+         showMoreBtn.disabled = false;
+         alert('Failed to load more results. Please try again.');
+       }
+     }
+
+    function renderResults(items){
+      resultsEl.innerHTML = '';
+      if(!items.length){resultsEl.innerHTML = '<div style="color:var(--muted)">No results</div>';return}
+      items.forEach(it=>{
+        // pick artworkUrl100 or collection artwork
+        const art = it.artworkUrl100 || it.artworkUrl60;
+        const hi = art ? art.replace(/100x100bb.jpg|100x100bb.png|60x60bb.jpg|60x60bb.png/gi,'600x600bb.jpg') : null;
+        const div = document.createElement('div'); div.className='result';
+        const img = document.createElement('img'); img.src = hi; img.alt = it.collectionName || it.trackName || '';
+        div.appendChild(img);
+        const lbl = document.createElement('div'); lbl.style.fontSize='12px'; lbl.style.marginTop='6px'; lbl.textContent = it.collectionName || it.trackName || '';
+        div.appendChild(lbl);
+        div.addEventListener('click', ()=>{
+          // highlight selection
+          Array.from(resultsEl.querySelectorAll('.result.selected')).forEach(el=>el.classList.remove('selected'));
+          div.classList.add('selected');
+          selectImageFromUrl(hi);
+        });
+        resultsEl.appendChild(div);
+      });
+    }
+
+    async function selectImageFromUrl(url){
+      try{
+        const r = await fetch(url); const blob = await r.blob(); selectImageBlob(blob);
+      }catch(err){alert('Failed to fetch image: '+err.message)}
+    }
+
+    async function selectImageFile(file){
+      const blob = file; selectImageBlob(blob);
+    }
+
+    async function selectImageBlob(blob){
+      selectedImageBlob = blob;
+      selPreview.innerHTML = '';
+      const url = URL.createObjectURL(blob);
+      const img = document.createElement('img'); 
+      img.src = url; 
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'contain';
+      img.style.borderRadius = '6px';
+      img.onload = ()=>URL.revokeObjectURL(url);
+      selPreview.appendChild(img);
+      // size + dim
+      const infoUrl = URL.createObjectURL(blob);
+      const oImg = new Image(); oImg.src = infoUrl; oImg.onload = ()=>{selInfo.textContent = `${oImg.width}×${oImg.height} — ${Math.round(blob.size/1024)} KB`; URL.revokeObjectURL(infoUrl); };
+             applyBtn.disabled = false;
+     }
+
+         // Apply changes
+     applyBtn.addEventListener('click', ()=>applyChanges());
+
+         async function applyChanges(){
+       if(!currentFile) return alert('No file loaded');
+       const name = currentFile.name || '';
+       
+       if(name.toLowerCase().endsWith('.mp3') || currentFile.type==='audio/mpeg'){
+         try{
+           // Ensure writer library is available
+           const Writer = window.ID3Writer || window.ID3;
+           if(!Writer){
+             alert('Local ID3 writer library not found. Please place "libs/browser-id3-writer.min.js" and refresh. Falling back to download.');
+             return downloadBlobFallback();
+           }
+
+           const audioBuf = await currentFile.arrayBuffer();
+           const writer = new Writer(audioBuf);
+           
+           // Set frames - use edited values if available
+           const titleToSave = metaTitleEl.textContent !== '—' ? metaTitleEl.textContent : (currentMetadata.title || '');
+           const artistToSave = metaArtistEl.textContent !== '—' ? metaArtistEl.textContent : (currentMetadata.artist || '');
+           
+           if (titleToSave) writer.setFrame('TIT2', titleToSave);
+           if (artistToSave) writer.setFrame('TPE1', [artistToSave]);
+           
+           // Set cover art if selected, otherwise keep existing
+           if (selectedImageBlob) {
+             const coverBuf = await selectedImageBlob.arrayBuffer();
+             writer.setFrame('APIC', {
+               type: 3,
+               data: new Uint8Array(coverBuf),
+               description: 'Cover',
+               mimeType: selectedImageBlob.type || 'image/jpeg',
+             });
+           } else if (currentCoverBlob) {
+             // Keep existing cover
+             const coverBuf = await currentCoverBlob.arrayBuffer();
+             writer.setFrame('APIC', {
+               type: 3,
+               data: new Uint8Array(coverBuf),
+               description: 'Cover',
+               mimeType: currentCoverBlob.type || 'image/jpeg',
+             });
+           }
+           
+           writer.addTag();
+           const taggedBlob = writer.getBlob();
+           await saveBackOrDownload(taggedBlob, name);
+           
+           // Update current preview to reflect the new cover if changed
+           if (selectedImageBlob) {
+             currentCoverBlob = selectedImageBlob;
+             showCurrentCover(selectedImageBlob);
+           }
+           
+           alert('Changes applied successfully.');
+         }catch(err){
+           console.error('ID3 writing error:', err);
+           alert('Failed to write MP3 changes in-browser. A download will be offered instead.\n' + err.message);
+           return downloadEditedFileFallback();
+         }
+       } else {
+         alert('Editing is currently only supported for MP3 files.');
+       }
+     }
+
+      function downloadBlobFallback(){
+        if (selectedImageBlob) {
+          downloadBlob(selectedImageBlob, 'cover-art' + getExtFromMime(selectedImageBlob.type));
+        }
+        downloadBlob(currentFile, currentFile.name);
+      }
+
+      async function downloadEditedFileFallback(){
+        try{
+          const merged = await mergeCoverIntoMp3BlobFallback();
+          downloadBlob(merged || currentFile, name);
+        }catch{
+          downloadBlob(currentFile, name);
+        }
+      }
+
+      async function mergeCoverIntoMp3BlobFallback(){
+        return null;
+      }
+
+         async function saveBackOrDownload(blob, suggestedName){
+       // Use edited filename if available, otherwise use suggested name
+       let finalName = suggestedName;
+       if (filenameDisplay.textContent !== '—' && filenameDisplay.textContent !== suggestedName.replace(/\.[^/.]+$/, "")) {
+         const ext = suggestedName.split('.').pop();
+         finalName = filenameDisplay.textContent + '.' + ext;
+       }
+       
+       try{
+         if (currentFileHandle && currentFileHandle.createWritable) {
+           const writable = await currentFileHandle.createWritable();
+           await writable.write(blob);
+           await writable.close();
+           return;
+         }
+       }catch(err){
+       }
+
+       try{
+         if (window.showSaveFilePicker) {
+           const handle = await window.showSaveFilePicker({
+             suggestedName: finalName,
+             types: [{ description: 'MP3 Audio', accept: { 'audio/mpeg': ['.mp3'] } }]
+           });
+           const writable = await handle.createWritable();
+           await writable.write(blob);
+           await writable.close();
+         } else {
+           // No FS Access API, fall back to download
+           downloadBlob(blob, finalName);
+         }
+       }catch(err){
+         console.error('saveBackOrDownload error:', err);
+         // User may have canceled or an error occurred; fall back to download
+         downloadBlob(blob, finalName);
+       }
+     }
+
+    function downloadBlob(blob, filename){
+      const a = document.createElement('a'); const url = URL.createObjectURL(blob); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url); a.remove();},1000);
+    }
+
+    function getExtFromMime(mime){
+      if(mime==='image/png') return '.png';
+      if(mime==='image/jpeg') return '.jpg';
+      return '.bin';
+    }
+
+    // small utility: allow paste of metadata quick search
+    window.addEventListener('paste', e=>{
+      // if user pastes text into page, put into search box
+      const t = (e.clipboardData || window.clipboardData).getData('text'); if(t && t.length<200) searchInput.value = t;
+    });
+    
+    // Helper functions for editing metadata fields
+    function toggleEditField(fieldType) {
+      if (fieldType === 'title') {
+        metaTitleEl.style.display = 'none';
+        metaTitleEdit.style.display = 'block';
+        metaTitleEdit.value = metaTitleEl.textContent === '—' ? '' : metaTitleEl.textContent;
+        metaTitleEdit.focus();
+        metaTitleEdit.select();
+      } else if (fieldType === 'artist') {
+        metaArtistEl.style.display = 'none';
+        metaArtistEdit.style.display = 'block';
+        metaArtistEdit.value = metaArtistEl.textContent === '—' ? '' : metaArtistEl.textContent;
+        metaArtistEdit.focus();
+        metaArtistEdit.select();
+      } else if (fieldType === 'filename') {
+        filenameDisplay.style.display = 'none';
+        filenameEdit.style.display = 'block';
+        filenameEdit.value = filenameDisplay.textContent === '—' ? '' : filenameDisplay.textContent;
+        filenameEdit.focus();
+        filenameEdit.select();
+      }
+    }
+    
+    function saveEditField(fieldType) {
+      if (fieldType === 'title') {
+        const newValue = metaTitleEdit.value.trim();
+        metaTitleEl.textContent = newValue || '—';
+        metaTitleEl.style.display = 'block';
+        metaTitleEdit.style.display = 'none';
+        if (newValue) currentMetadata.title = newValue;
+      } else if (fieldType === 'artist') {
+        const newValue = metaArtistEdit.value.trim();
+        metaArtistEl.textContent = newValue || '—';
+        metaArtistEl.style.display = 'block';
+        metaArtistEdit.style.display = 'none';
+        if (newValue) currentMetadata.artist = newValue;
+      } else if (fieldType === 'filename') {
+        const newValue = filenameEdit.value.trim();
+        filenameDisplay.textContent = newValue || '—';
+        filenameDisplay.style.display = 'block';
+        filenameEdit.style.display = 'none';
+        if (newValue) currentMetadata.filename = newValue;
+      }
+    }
+  </script>
+</body>
+</html>
