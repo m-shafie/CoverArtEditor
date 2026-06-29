@@ -1,0 +1,38 @@
+{
+  "productName": "Coverify",
+  "version": "1.0.0",
+  "identifier": "com.coverify.desktop",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Coverify",
+        "width": 1100,
+        "height": 720,
+        "resizable": false,
+        "maximizable": false,
+        "fullscreen": false,
+        "center": true,
+        "decorations": false,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: https://*.mzstatic.com https://*.dzcdn.net; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

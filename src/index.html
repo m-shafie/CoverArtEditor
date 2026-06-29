@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coverify</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Custom title bar -->
+  <div id="titlebar" data-tauri-drag-region>
+    <div class="tb-left" data-tauri-drag-region>
+      <svg class="tb-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M6 12a6 6 0 0 1 6-6"/></svg>
+      <span class="tb-title" data-tauri-drag-region>Coverify</span>
+    </div>
+    <div class="tb-controls">
+      <button id="theme-btn" class="tb-btn" aria-label="Toggle light/dark theme" title="Toggle theme">
+        <svg class="moon" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="sun" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <button id="min-btn" class="tb-btn" aria-label="Minimize window" title="Minimize">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button id="close-btn" class="tb-btn tb-close" aria-label="Close window" title="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <main class="app">
+    <section class="left">
+
+      <!-- Empty state / drop zone -->
+      <div id="empty-state" role="button" tabindex="0" aria-label="Open a music file">
+        <svg class="vinyl" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6.5" opacity="0.45"/><circle cx="12" cy="12" r="4" opacity="0.7"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>
+        <h2>Drop a music file</h2>
+        <p class="sub">Drag a track anywhere into this window, or</p>
+        <button id="browse-btn" class="btn primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Browse files
+        </button>
+        <p class="formats">MP3 &middot; M4A &middot; FLAC &middot; OGG &middot; WAV &middot; AIFF &middot; APE</p>
+      </div>
+
+      <!-- Loaded file -->
+      <div id="file-section" hidden>
+        <div class="file-card card">
+          <div class="thumb" id="current-thumb">
+            <svg class="placeholder" xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </div>
+          <div class="file-info">
+            <div class="file-name-row">
+              <span id="file-name" title="">No file</span>
+              <button id="change-btn" class="btn ghost" type="button">Change</button>
+            </div>
+            <div class="sel-meta" id="sel-meta">
+              <div class="sel-meta-label">From selected result &mdash; click to fill</div>
+              <div class="sel-meta-row">
+                <div class="field">
+                  <label for="sel-meta-title">Title</label>
+                  <button id="sel-meta-title" class="sel-meta-chip" type="button" disabled title="Use this title">&mdash;</button>
+                </div>
+                <div class="field">
+                  <label for="sel-meta-artist">Artist</label>
+                  <button id="sel-meta-artist" class="sel-meta-chip" type="button" disabled title="Use this artist">&mdash;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="search-row">
+          <div class="search-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="search-input" class="text-input" placeholder="Search artwork by artist or title..." autocomplete="off" spellcheck="false" />
+          </div>
+          <button id="search-btn" class="btn primary" type="button">Search</button>
+        </div>
+
+        <div id="results-scroll">
+          <div id="results" class="results-grid"></div>
+          <div id="results-empty">
+            <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <span>Search results will appear here</span>
+          </div>
+          <div class="show-more-wrap" id="show-more-wrap" hidden>
+            <button id="show-more-btn" class="btn secondary" type="button">Show more results</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Preview & save panel -->
+    <aside class="right card">
+      <div class="panel-title">Artwork</div>
+      <div class="preview-grid">
+        <div class="preview-panel">
+          <div class="preview-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            Current
+          </div>
+          <div class="preview-box" id="cur-preview"><div class="empty">No image</div></div>
+          <div class="preview-info" id="cur-info">&mdash;</div>
+        </div>
+        <div class="preview-panel">
+          <div class="preview-label">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            New
+          </div>
+          <div class="preview-box" id="sel-preview"><div class="empty">Pick a result</div></div>
+          <div class="preview-info" id="sel-info">&mdash;</div>
+        </div>
+      </div>
+      <button id="import-btn" class="btn secondary" type="button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Import image from disk
+      </button>
+
+      <div class="divider"></div>
+
+      <div class="panel-title">Metadata</div>
+      <div class="fields meta-fields">
+        <div class="field">
+          <label for="title-input">Title</label>
+          <input id="title-input" class="text-input" placeholder="Track title" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="field">
+          <label for="artist-input">Artist</label>
+          <input id="artist-input" class="text-input" placeholder="Artist" autocomplete="off" spellcheck="false" />
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="panel-title">Save</div>
+      <div class="segmented" role="tablist" aria-label="Save mode">
+        <button id="mode-inplace" class="active" type="button" role="tab" aria-selected="true">Edit in place</button>
+        <button id="mode-folder" type="button" role="tab" aria-selected="false">Save to folder</button>
+      </div>
+
+      <div class="folder-row" id="folder-row" hidden>
+        <div id="folder-path" class="unset" title="">No folder selected</div>
+        <button id="folder-btn" class="icon-btn" type="button" aria-label="Choose output folder" title="Choose folder">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </button>
+      </div>
+
+      <div class="field">
+        <label for="rename-input">Output filename</label>
+        <div class="filename-row">
+          <div class="input-with-suffix">
+            <input id="rename-input" autocomplete="off" spellcheck="false" aria-label="Output filename without extension" />
+            <span id="ext-label" class="ext-label"></span>
+          </div>
+          <button id="rename-fill-btn" class="icon-btn" type="button" aria-label="Auto-fill filename from artist and title" title="Auto-fill from Artist - Title">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M15 9h0M17.8 6.2 19 5M12.2 6.2 11 5M12.2 11.8 11 13"/><path d="m3 21 9-9"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <button class="btn primary" id="apply-btn" type="button" disabled>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Apply changes
+      </button>
+    </aside>
+  </main>
+
+  <!-- Full-window drag overlay -->
+  <div id="drop-overlay">
+    <div class="drop-inner">
+      <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      <h2>Drop your track</h2>
+      <p>Release to load the file</p>
+    </div>
+  </div>
+
+  <div id="toast-container" aria-live="polite"></div>
+
+  <script src="main.js"></script>
+</body>
+</html>

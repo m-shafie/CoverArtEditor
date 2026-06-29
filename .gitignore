@@ -1,5 +1,15 @@
 node_modules/
+target/
+src-tauri/target/
 dist/
 build/
 *.exe
 *.dll
+*.msi
+*.nupkg
+*.deb
+*.rpm
+*.AppImage
+*.dmg
+.DS_Store
+Thumbs.db
