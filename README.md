@@ -2,6 +2,8 @@
 
 A desktop tool for editing music file cover art and metadata. Built with Tauri v2 (Rust backend + Vanilla JS frontend).
 
+![Screenshot](screenshot.png)
+
 ## Features
 
 - **Drag & Drop** — Drop audio files and instantly view metadata
